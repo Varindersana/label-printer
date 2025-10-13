@@ -1,0 +1,8 @@
+{
+  "name": "label-printer",
+  "version": "1.0.0",
+  "description": "Universal Label Printing App",
+  "scripts": {
+    "dev": "python -m http.server 3000"
+  }
+}
