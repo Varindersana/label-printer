@@ -317,6 +317,16 @@
             color: var(--secondary);
         }
         
+        .debug-info {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #6c757d;
+        }
+        
         @media (max-width: 768px) {
             .sections-grid {
                 grid-template-columns: 1fr;
@@ -405,6 +415,13 @@
                     <button class="btn btn-secondary" id="clearFormBtn">Clear Form</button>
                 </div>
                 
+                <!-- Debug Info -->
+                <div class="debug-info" id="debugInfo">
+                    <strong>Debug Info:</strong><br>
+                    Products in storage: <span id="productCount">0</span><br>
+                    Last saved: <span id="lastSaved">Never</span>
+                </div>
+                
                 <!-- All Products List -->
                 <div style="margin-top: 40px;">
                     <h3>All Products</h3>
@@ -451,16 +468,44 @@
                         Print Label
                     </button>
                 </div>
+
+                <div class="debug-info">
+                    <strong>Bluetooth Debug:</strong><br>
+                    Bluetooth API: <span id="bluetoothSupport">Checking...</span><br>
+                    Connection: <span id="connectionStatus">Not connected</span>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-        // Product management
-        let products = JSON.parse(localStorage.getItem('labelProducts')) || [];
+        // Product management - FIXED STORAGE ISSUE
+        let products = [];
         let selectedProduct = null;
         let isPrinterConnected = false;
         let currentSection = null;
+        
+        // Initialize products from localStorage
+        function initializeProducts() {
+            try {
+                const storedProducts = localStorage.getItem('labelProducts');
+                console.log('Stored products:', storedProducts);
+                
+                if (storedProducts) {
+                    products = JSON.parse(storedProducts);
+                    console.log('Parsed products:', products);
+                } else {
+                    products = [];
+                    localStorage.setItem('labelProducts', JSON.stringify(products));
+                }
+                
+                updateDebugInfo();
+            } catch (error) {
+                console.error('Error loading products:', error);
+                products = [];
+                localStorage.setItem('labelProducts', JSON.stringify(products));
+            }
+        }
         
         // Available sections
         const availableSections = [
@@ -516,16 +561,24 @@
         const previewBatch = document.getElementById('previewBatch');
         const previewSize = document.getElementById('previewSize');
         
+        // Debug elements
+        const productCount = document.getElementById('productCount');
+        const lastSaved = document.getElementById('lastSaved');
+        const bluetoothSupport = document.getElementById('bluetoothSupport');
+        const connectionStatus = document.getElementById('connectionStatus');
+        
         // Paper settings
         const paperWidthInput = document.getElementById('paperWidth');
         const paperHeightInput = document.getElementById('paperHeight');
         
         // Initialize the app
         function initApp() {
+            initializeProducts(); // FIXED: Initialize products first
             setupNavigation();
             loadSections();
             loadAllProducts();
             updatePreview();
+            checkBluetoothSupport();
             
             // Set current date in preview
             const today = new Date();
@@ -535,6 +588,23 @@
             const useByDate = new Date();
             useByDate.setDate(today.getDate() + 7);
             previewUseByDate.textContent = formatDate(useByDate);
+        }
+        
+        // Update debug information
+        function updateDebugInfo() {
+            productCount.textContent = products.length;
+            lastSaved.textContent = new Date().toLocaleTimeString();
+        }
+        
+        // Check Bluetooth support
+        function checkBluetoothSupport() {
+            if (navigator.bluetooth) {
+                bluetoothSupport.textContent = 'Supported';
+                bluetoothSupport.style.color = 'green';
+            } else {
+                bluetoothSupport.textContent = 'Not supported - Use Chrome/Edge';
+                bluetoothSupport.style.color = 'red';
+            }
         }
         
         // Setup navigation between pages
@@ -724,11 +794,13 @@
             updatePreview();
         }
         
-        // Delete a product
+        // Delete a product - FIXED
         function deleteProduct(index) {
             if (confirm('Are you sure you want to delete this product?')) {
                 products.splice(index, 1);
+                // FIXED: Save to localStorage immediately
                 localStorage.setItem('labelProducts', JSON.stringify(products));
+                updateDebugInfo();
                 
                 if (selectedProduct === index) {
                     selectedProduct = null;
@@ -774,7 +846,7 @@
             }
         }
         
-        // Save product
+        // Save product - FIXED
         saveProductBtn.addEventListener('click', () => {
             const productName = productNameInput.value.trim();
             const section = productSectionInput.value;
@@ -792,7 +864,9 @@
             };
             
             products.push(newProduct);
+            // FIXED: Save to localStorage immediately
             localStorage.setItem('labelProducts', JSON.stringify(products));
+            updateDebugInfo();
             
             // Clear form
             productNameInput.value = '';
@@ -813,7 +887,7 @@
             expiryDaysInput.value = '7';
         });
         
-        // Connect to printer via Bluetooth
+        // Connect to printer via Bluetooth - FIXED
         connectPrinterBtn.addEventListener('click', async () => {
             try {
                 // Check if Bluetooth is available
@@ -822,23 +896,26 @@
                     return;
                 }
                 
-                // Request Bluetooth device with specific service
+                console.log('Requesting Bluetooth device...');
+                
+                // FIXED: Use a more generic approach for printer discovery
                 const device = await navigator.bluetooth.requestDevice({
-                    filters: [
-                        { namePrefix: 'Label' },
-                        { namePrefix: 'Printer' },
-                        { services: ['generic_access'] }
-                    ],
-                    optionalServices: ['generic_access']
+                    acceptAllDevices: true, // Show all devices
+                    optionalServices: ['generic_access'] // Basic service most devices have
                 });
+                
+                console.log('Device selected:', device.name);
                 
                 // Connect to the device
                 const server = await device.gatt.connect();
+                console.log('Connected to GATT server');
                 
                 isPrinterConnected = true;
-                printerStatus.textContent = `Printer: Connected to ${device.name}`;
+                printerStatus.textContent = `Printer: Connected to ${device.name || 'Unknown Device'}`;
                 printerStatus.className = 'status-bar status-connected';
                 printBtn.disabled = false;
+                connectionStatus.textContent = `Connected to ${device.name}`;
+                connectionStatus.style.color = 'green';
                 
                 console.log('Connected to printer:', device.name);
                 
@@ -848,11 +925,21 @@
                     printerStatus.textContent = 'Printer: Not Connected';
                     printerStatus.className = 'status-bar status-disconnected';
                     printBtn.disabled = true;
+                    connectionStatus.textContent = 'Disconnected';
+                    connectionStatus.style.color = 'red';
                 });
                 
             } catch (error) {
                 console.error('Bluetooth connection error:', error);
-                alert('Failed to connect to printer. Please make sure it is turned on and in pairing mode.');
+                if (error.name === 'NotFoundError') {
+                    alert('No Bluetooth devices found. Please make sure your printer is turned on and in pairing mode.');
+                } else if (error.name === 'SecurityError') {
+                    alert('Bluetooth permissions denied. Please allow Bluetooth access in your browser settings.');
+                } else {
+                    alert('Failed to connect to Bluetooth device: ' + error.message);
+                }
+                connectionStatus.textContent = 'Connection failed: ' + error.message;
+                connectionStatus.style.color = 'red';
             }
         });
         
@@ -870,7 +957,7 @@
             
             // In a real implementation, this would send the label data to the printer
             // For this demo, we'll just show a success message
-            alert('Label sent to printer successfully!');
+            alert('Label sent to printer successfully!\n\nProduct: ' + products[selectedProduct].productName + '\nUse By: ' + previewUseByDate.textContent);
             
             // Log the print job details
             console.log('Print job details:', {
