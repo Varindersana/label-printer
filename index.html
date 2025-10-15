@@ -3,136 +3,139 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal Label Printer (Cloud Sync)</title>
+    <title>Universal Label Printer ☁️</title>
     <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --secondary: #64748b;
+            --success: #10b981;
+            --danger: #ef4444;
+            --light: #f8fafc;
+            --dark: #1e293b;
+            --border: #e2e8f0;
+        }
         body {
-            font-family: Arial, sans-serif;
-            background: #f1f5f9;
-            margin: 0;
-            padding: 0;
-            color: #1e293b;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f1f5f9;
+            color: var(--dark);
+            line-height: 1.6;
         }
         header {
-            background: #fff;
+            background-color: white;
             padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
-        .container {
-            max-width: 1100px;
-            margin: auto;
-            padding: 20px;
-        }
-        .btn {
-            background: #2563eb;
-            color: #fff;
-            border: none;
-            padding: 10px 15px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        .btn:hover {
-            background: #1d4ed8;
-        }
-        .sync-status {
-            margin-top: 10px;
-            padding: 10px;
-            border-radius: 5px;
-            text-align: center;
-        }
-        .syncing { background: #fff3e0; color: #f59e0b; }
-        .error { background: #fee2e2; color: #dc2626; }
-        .success { background: #dcfce7; color: #16a34a; }
-        .products-list {
-            background: #fff;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-            margin-top: 20px;
-        }
-        .product-item {
-            border-bottom: 1px solid #e2e8f0;
-            padding: 10px 0;
-        }
+        .logo { font-size: 24px; font-weight: bold; color: var(--primary); }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; }
+        .nav-tab { padding: 12px 24px; background: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.3s; }
+        .nav-tab.active { background-color: var(--primary); color: white; }
+        .nav-tab:hover:not(.active) { background-color: var(--light); }
+        .main-content { background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); min-height: 500px; }
+        .sync-status { background: #e3f2fd; border: 1px solid #bbdefb; border-radius: 5px; padding: 10px; margin: 10px 0; font-size: 14px; }
+        .syncing { background: #fff3e0; border-color: #ffe0b2; }
+        .error { background: #ffebee; border-color: #ffcdd2; }
+        .success { background: #e8f5e8; border-color: #c8e6c9; }
     </style>
 </head>
 <body>
-<header>
-    <h2>Label Printer ☁️</h2>
-    <button id="refreshBtn" class="btn">🔄 Sync Now</button>
-</header>
+    <div class="container">
+        <header>
+            <div class="logo">Label Printer ☁️</div>
+            <div class="status-bar" id="printerStatus">Printer: Not Connected</div>
+        </header>
 
-<div class="container">
-    <h3>Products (Live from Google Sheet)</h3>
-    <div id="syncStatus" class="sync-status">Ready to connect...</div>
-    <div class="products-list" id="productList">Loading...</div>
-</div>
+        <div class="sync-status" id="syncStatus">🔄 Ready to connect to your Google Sheet</div>
+
+        <div class="nav-tabs">
+            <button class="nav-tab active" id="sectionsTab">Sections</button>
+            <button class="nav-tab" id="addTab">Add Product</button>
+            <button class="nav-tab" id="printTab">Print Label</button>
+            <button class="btn btn-outline" id="refreshBtn">🔄 Sync Now</button>
+        </div>
+
+        <div class="main-content">
+            <div id="sections-page">
+                <h2>Product Sections</h2>
+                <div id="sectionsGrid"></div>
+            </div>
+        </div>
+    </div>
 
 <script>
-const SHEET_ID = "1548yioOPYNQzQvcr8dt4iJ3v4KgjzHSw-XaBbcYQhZY";
+const sheetId = '1548yioOPYNQzQvcr8dt4iJ3v4KgjzHSw-XaBbcYQhZY';
+const syncStatus = document.getElementById('syncStatus');
+const refreshBtn = document.getElementById('refreshBtn');
 let products = [];
 
-const syncStatus = document.getElementById('syncStatus');
-const productList = document.getElementById('productList');
-const refreshBtn = document.getElementById('refreshBtn');
-
-function updateSyncStatus(msg, type) {
-    syncStatus.textContent = msg;
-    syncStatus.className = 'sync-status ' + (type || '');
+function updateSyncStatus(message, type = 'info') {
+  syncStatus.textContent = message;
+  syncStatus.className = 'sync-status ' + (type || '');
 }
 
-async function loadProductsFromSheet() {
-    updateSyncStatus('🔄 Syncing with Google Sheets...', 'syncing');
-    try {
-        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`;
-        const res = await fetch(url);
-        const text = await res.text();
-        const json = JSON.parse(text.substring(47, text.length - 2));
-        const rows = json.table.rows;
-
-        products = rows.map(r => {
-            const c = r.c;
-            return {
-                id: c[0] ? c[0].v : '',
-                productName: c[1] ? c[1].v : '',
-                section: c[2] ? c[2].v : '',
-                expiryDays: c[3] ? c[3].v : ''
-            };
-        }).filter(p => p.productName);
-
-        localStorage.setItem('labelProducts', JSON.stringify(products));
-        renderProducts();
-        updateSyncStatus('✅ Synced successfully with Google Sheets', 'success');
-    } catch (err) {
-        console.error('Error syncing:', err);
-        updateSyncStatus('❌ Error syncing with Google Sheets', 'error');
-    }
+function saveProducts() {
+  localStorage.setItem('labelProducts', JSON.stringify(products));
 }
 
-function renderProducts() {
-    if (!products.length) {
-        productList.innerHTML = '<p>No products found. Add rows in your Google Sheet.</p>';
-        return;
-    }
-    productList.innerHTML = products.map(p => `
-        <div class="product-item">
-            <strong>${p.productName}</strong> — Section: ${p.section} — Expiry: ${p.expiryDays} days
-        </div>
-    `).join('');
+function loadSections() {
+  const grid = document.getElementById('sectionsGrid');
+  grid.innerHTML = '';
+  products.forEach(p => {
+    const div = document.createElement('div');
+    div.textContent = `${p.productName} — ${p.section} (${p.expiryDays} days)`;
+    div.style.padding = '10px';
+    div.style.borderBottom = '1px solid #e2e8f0';
+    grid.appendChild(div);
+  });
 }
 
-refreshBtn.addEventListener('click', loadProductsFromSheet);
+async function loadProductsFromGoogleSheet() {
+  try {
+    updateSyncStatus('🔄 Fetching data from Google Sheets...', 'syncing');
+    const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json`;
+    const res = await fetch(url);
+    const text = await res.text();
+
+    const jsonStart = text.indexOf('{');
+    const jsonEnd = text.lastIndexOf('}');
+    if (jsonStart === -1 || jsonEnd === -1) throw new Error('Invalid sheet format');
+
+    const json = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
+    const rows = json.table.rows || [];
+    products = rows.map(r => {
+      const c = r.c;
+      return {
+        id: c[0]?.v || Date.now(),
+        productName: c[1]?.v || '',
+        section: c[2]?.v || '',
+        expiryDays: parseInt(c[3]?.v || 7)
+      };
+    }).filter(p => p.productName);
+
+    saveProducts();
+    loadSections();
+    updateSyncStatus(`✅ Synced ${products.length} products from Google Sheets`, 'success');
+  } catch (err) {
+    console.error('Error syncing Google Sheet:', err);
+    updateSyncStatus('❌ Error syncing Google Sheet', 'error');
+  }
+}
+
+refreshBtn.addEventListener('click', loadProductsFromGoogleSheet);
 
 window.addEventListener('DOMContentLoaded', () => {
-    const saved = localStorage.getItem('labelProducts');
-    if (saved) {
-        products = JSON.parse(saved);
-        renderProducts();
-    }
-    loadProductsFromSheet();
+  const stored = localStorage.getItem('labelProducts');
+  if (stored) {
+    products = JSON.parse(stored);
+    loadSections();
+  }
+  loadProductsFromGoogleSheet();
 });
 </script>
 </body>
