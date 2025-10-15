@@ -1,7 +1,4 @@
-from pathlib import Path
-
-# Full HTML code with integrated Google Sheet sync (simplified and integrated into the existing structure)
-html_code = """<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -140,9 +137,3 @@ window.addEventListener('DOMContentLoaded', () => {
 </script>
 </body>
 </html>
-"""
-
-# Save to file
-output_path = Path("/mnt/data/index_cloud_sync.html")
-output_path.write_text(html_code, encoding="utf-8")
-output_path
