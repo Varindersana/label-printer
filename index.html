@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Universal Label Printer</title>
     <style>
-        /* Your existing CSS remains exactly the same */
         :root {
             --primary: #2563eb;
             --primary-dark: #1d4ed8;
@@ -352,6 +351,19 @@
             margin-left: 10px;
         }
         
+        .bluetooth-info {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+            font-size: 14px;
+        }
+        
+        .bluetooth-info ul {
+            margin: 10px 0 0 20px;
+        }
+        
         @media (max-width: 768px) {
             .sections-grid {
                 grid-template-columns: 1fr;
@@ -373,7 +385,7 @@
 <body>
     <div class="container">
         <header>
-            <div class="logo">Label Printer ☁️ 
+            <div class="logo">🖨️ Label Printer 
                 <span class="user-count">👥 Multi-User</span>
             </div>
             <div class="status-bar" id="printerStatus">Printer: Not Connected</div>
@@ -445,7 +457,7 @@
                 </div>
                 
                 <div class="action-buttons">
-                    <button class="btn btn-success" id="saveProductBtn">Save to Cloud</button>
+                    <button class="btn btn-success" id="saveProductBtn">💾 Save to Cloud</button>
                     <button class="btn btn-secondary" id="clearFormBtn">Clear Form</button>
                 </div>
                 
@@ -461,6 +473,16 @@
             <!-- Print Page -->
             <div id="print-page" class="page">
                 <h2>Print Label</h2>
+                
+                <div class="bluetooth-info">
+                    <strong>📱 Bluetooth Requirements:</strong>
+                    <ul>
+                        <li>✅ Use Chrome or Edge browser (NOT Firefox or Safari)</li>
+                        <li>✅ Android, Windows, Mac, or Linux (NOT iOS)</li>
+                        <li>✅ Access via HTTPS or localhost</li>
+                        <li>✅ Turn on your Bluetooth printer and enable pairing mode</li>
+                    </ul>
+                </div>
                 
                 <div class="preview-area">
                     <div class="label-preview" id="labelPreview">
@@ -489,10 +511,13 @@
                 
                 <div class="action-buttons">
                     <button class="btn btn-primary" id="connectPrinterBtn">
-                        Connect Printer
+                        🔗 Connect Bluetooth Printer
                     </button>
                     <button class="btn btn-success" id="printBtn" disabled>
-                        Print Label
+                        🖨️ Print Label
+                    </button>
+                    <button class="btn btn-secondary" id="testPrintBtn" disabled>
+                        🧪 Test Print
                     </button>
                 </div>
             </div>
@@ -500,16 +525,18 @@
     </div>
 
     <script>
-        // === REAL CLOUD SYNC WITH JSONBIN.IO ===
-        // JSONBin.io is FREE and provides real cloud database
-        
-        const JSONBIN_BIN_ID = '67b2a9eae41b4d34e4412345'; // This is a demo bin ID
-        const JSONBIN_MASTER_KEY = '$2a$10$6L7Q8w9x0y1z2a3b4c5d6e7f8g9h0i1j2k3l4m5n6o7p8q9r0s1t2u3v4w5'; // Demo key
+        // === CLOUD SYNC WITH YOUR JSONBIN.IO CREDENTIALS ===
+        const JSONBIN_BIN_ID = '68ef0bf7ae596e708f1440a3';
+        const JSONBIN_MASTER_KEY = '$2a$10$mwnX1sCWWwjcj58TzRlNoOGPRWM1cUm7kez7Z6/9UiqdqJ7XAsibu';
+        const USE_CLOUD_SYNC = true; // Cloud sync is enabled!
         
         // Product management
         let products = [];
         let selectedProduct = null;
         let isPrinterConnected = false;
+        let printerDevice = null;
+        let printerCharacteristic = null;
+        let printerServer = null;
         let currentSection = null;
         
         // Available sections
@@ -523,7 +550,7 @@
             "Others"
         ];
         
-        // Section icons (emoji)
+        // Section icons
         const sectionIcons = {
             "Sauces": "🧴",
             "Ingredients": "🥬",
@@ -558,6 +585,7 @@
         // Print elements
         const connectPrinterBtn = document.getElementById('connectPrinterBtn');
         const printBtn = document.getElementById('printBtn');
+        const testPrintBtn = document.getElementById('testPrintBtn');
         const printerStatus = document.getElementById('printerStatus');
         
         // Preview elements
@@ -587,6 +615,12 @@
         
         // JSONBin.io Cloud Functions
         async function loadProductsFromCloud() {
+            if (!USE_CLOUD_SYNC) {
+                updateSyncStatus('ℹ️ Cloud sync disabled. Using local storage only.', 'info');
+                loadFromLocalStorage();
+                return;
+            }
+            
             try {
                 updateSyncStatus('🔄 Loading products from cloud...', 'syncing');
                 
@@ -597,7 +631,7 @@
                 });
                 
                 if (!response.ok) {
-                    throw new Error('Failed to load from cloud');
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 
                 const data = await response.json();
@@ -606,15 +640,23 @@
                 updateSyncStatus(`✅ Loaded ${products.length} products from cloud - All users synced!`, 'success');
                 loadSections();
                 loadAllProducts();
+                saveToLocalStorage();
                 
             } catch (error) {
                 console.error('Error loading from cloud:', error);
-                updateSyncStatus('❌ Cloud load failed. Using local storage.', 'error');
+                updateSyncStatus(`❌ Cloud load failed: ${error.message}. Using local storage.`, 'error');
                 loadFromLocalStorage();
             }
         }
         
         async function saveProductsToCloud() {
+            saveToLocalStorage();
+            
+            if (!USE_CLOUD_SYNC) {
+                updateSyncStatus('✅ Saved locally (Cloud sync disabled)', 'success');
+                return;
+            }
+            
             try {
                 updateSyncStatus('🔄 Saving to cloud...', 'syncing');
                 
@@ -631,16 +673,14 @@
                 });
                 
                 if (!response.ok) {
-                    throw new Error('Failed to save to cloud');
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 
                 updateSyncStatus('✅ Saved to cloud! All users will see changes.', 'success');
-                saveToLocalStorage(); // Backup locally
                 
             } catch (error) {
                 console.error('Error saving to cloud:', error);
-                updateSyncStatus('❌ Cloud save failed. Saved locally only.', 'error');
-                saveToLocalStorage();
+                updateSyncStatus(`❌ Cloud save failed: ${error.message}. Saved locally only.`, 'error');
             }
         }
         
@@ -664,7 +704,10 @@
         
         // Auto-refresh cloud data
         function setupAutoRefresh() {
-            // Refresh every 30 seconds to get updates from other users
+            if (!USE_CLOUD_SYNC) {
+                return;
+            }
+            
             setInterval(() => {
                 loadProductsFromCloud();
             }, 30000);
@@ -679,11 +722,9 @@
             setupAutoRefresh();
             updatePreview();
             
-            // Set current date in preview
             const today = new Date();
             previewMadeDate.textContent = formatDate(today);
             
-            // Set use by date (default 7 days from today)
             const useByDate = new Date();
             useByDate.setDate(today.getDate() + 7);
             previewUseByDate.textContent = formatDate(useByDate);
@@ -695,11 +736,9 @@
                 tab.addEventListener('click', () => {
                     const pageId = tab.dataset.page;
                     
-                    // Update active tab
                     navTabs.forEach(t => t.classList.remove('active'));
                     tab.classList.add('active');
                     
-                    // Show selected page
                     document.querySelectorAll('.page').forEach(page => {
                         page.classList.remove('active');
                     });
@@ -707,7 +746,6 @@
                 });
             });
             
-            // Refresh button
             refreshBtn.addEventListener('click', () => {
                 loadProductsFromCloud();
             });
@@ -741,20 +779,18 @@
             currentSection = section;
             selectedSectionTitle.textContent = `${section} Products`;
             
-            // Hide sections grid, show products list
             sectionsGrid.style.display = 'none';
             sectionProducts.classList.remove('hidden');
             
-            // Load products for this section
             loadSectionProducts(section);
         }
         
         // Load products for a specific section
         function loadSectionProducts(section) {
-            const sectionProducts = products.filter(p => p.section === section);
+            const sectionProductsFiltered = products.filter(p => p.section === section);
             sectionProductsList.innerHTML = '';
             
-            if (sectionProducts.length === 0) {
+            if (sectionProductsFiltered.length === 0) {
                 sectionProductsList.innerHTML = `
                     <div class="empty-state">
                         <p>No products in this section yet.</p>
@@ -764,7 +800,7 @@
                 return;
             }
             
-            sectionProducts.forEach((product) => {
+            sectionProductsFiltered.forEach((product) => {
                 const productItem = document.createElement('div');
                 productItem.className = 'product-item';
                 if (selectedProduct === product.id) {
@@ -786,7 +822,6 @@
                 sectionProductsList.appendChild(productItem);
             });
             
-            // Add event listeners for print buttons
             document.querySelectorAll('.print-from-section').forEach(button => {
                 button.addEventListener('click', (e) => {
                     const productId = e.target.dataset.id;
@@ -795,7 +830,6 @@
                 });
             });
             
-            // Add event listeners for delete buttons
             document.querySelectorAll('.delete-product').forEach(button => {
                 button.addEventListener('click', async (e) => {
                     const productId = e.target.dataset.id;
@@ -833,7 +867,6 @@
                 allProductsList.appendChild(productItem);
             });
             
-            // Add event listeners
             document.querySelectorAll('.select-product-all').forEach(button => {
                 button.addEventListener('click', (e) => {
                     const productId = e.target.dataset.id;
@@ -887,7 +920,6 @@
                     updatePreview();
                 }
                 
-                // Reload all lists
                 loadAllProducts();
                 loadSections();
                 if (currentSection) {
@@ -904,7 +936,6 @@
                     previewProductName.textContent = product.productName;
                     previewSection.textContent = product.section;
                     
-                    // Update dates
                     const today = new Date();
                     previewMadeDate.textContent = formatDate(today);
                     
@@ -912,16 +943,12 @@
                     useByDate.setDate(today.getDate() + product.expiryDays);
                     previewUseByDate.textContent = formatDate(useByDate);
                     
-                    // Generate a random batch number
                     previewBatch.textContent = Math.floor(100 + Math.random() * 900);
-                    
-                    // Update size based on paper settings
                     previewSize.textContent = `${paperWidthInput.value}x${paperHeightInput.value}mm`;
                     return;
                 }
             }
             
-            // Default preview
             previewProductName.textContent = 'Product Name';
             previewSection.textContent = 'Section Name';
             previewMadeDate.textContent = 'Current Date';
@@ -952,12 +979,10 @@
             products.push(newProduct);
             await saveProductsToCloud();
             
-            // Clear form
             productNameInput.value = '';
             productSectionInput.value = '';
             expiryDaysInput.value = '7';
             
-            // Reload all lists
             loadAllProducts();
             loadSections();
         });
@@ -969,34 +994,152 @@
             expiryDaysInput.value = '7';
         });
         
-        // Connect to printer via Bluetooth
+        // === IMPROVED BLUETOOTH CONNECTIVITY ===
+        
+        // Connect to printer via Bluetooth - SIMPLIFIED
         connectPrinterBtn.addEventListener('click', async () => {
             try {
+                // Check browser support
                 if (!navigator.bluetooth) {
-                    alert('Bluetooth is not supported in this browser. Please use Chrome or Edge.');
+                    alert('❌ Bluetooth is not supported!\n\n✅ Use: Chrome or Edge\n❌ Not supported: Firefox, Safari, iOS');
                     return;
                 }
                 
+                // Check HTTPS
+                if (location.protocol !== 'https:' && !location.hostname.includes('localhost') && !location.hostname.includes('127.0.0.1')) {
+                    alert('❌ Bluetooth requires HTTPS!\n\nPlease access via:\n• https:// URL\n• localhost');
+                    return;
+                }
+                
+                updateSyncStatus('🔍 Scanning for printers... Select your printer from the list', 'syncing');
+                
+                // Request ANY Bluetooth device - easier pairing
                 const device = await navigator.bluetooth.requestDevice({
                     acceptAllDevices: true,
-                    optionalServices: ['generic_access']
+                    optionalServices: [
+                        '000018f0-0000-1000-8000-00805f9b34fb', // Serial Port
+                        '49535343-fe7d-4ae5-8fa9-9fafd205e455', // Microchip UART
+                        '0000fff0-0000-1000-8000-00805f9b34fb', // Generic UART
+                        'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // Nordic UART
+                    ]
                 });
                 
-                const server = await device.gatt.connect();
+                if (!device) {
+                    throw new Error('No device selected');
+                }
                 
+                printerDevice = device;
+                updateSyncStatus(`🔗 Connecting to ${device.name || 'printer'}...`, 'syncing');
+                
+                // Connect to GATT
+                printerServer = await device.gatt.connect();
+                
+                // Try to find writable characteristic
+                try {
+                    const services = await printerServer.getPrimaryServices();
+                    
+                    for (const service of services) {
+                        try {
+                            const characteristics = await service.getCharacteristics();
+                            
+                            for (const char of characteristics) {
+                                if (char.properties.write || char.properties.writeWithoutResponse) {
+                                    printerCharacteristic = char;
+                                    console.log('Found writable characteristic:', char.uuid);
+                                    break;
+                                }
+                            }
+                        } catch (err) {
+                            console.log('Could not read characteristics:', err);
+                        }
+                        
+                        if (printerCharacteristic) break;
+                    }
+                } catch (serviceError) {
+                    console.log('Service discovery:', serviceError);
+                }
+                
+                // Update UI - connected!
                 isPrinterConnected = true;
-                printerStatus.textContent = `Printer: Connected to ${device.name || 'Unknown Device'}`;
+                printerStatus.textContent = `✅ Connected: ${device.name || 'Bluetooth Printer'}`;
                 printerStatus.className = 'status-bar status-connected';
                 printBtn.disabled = false;
+                testPrintBtn.disabled = false;
+                connectPrinterBtn.textContent = '✓ Connected';
+                connectPrinterBtn.classList.remove('btn-primary');
+                connectPrinterBtn.classList.add('btn-success');
+                
+                if (printerCharacteristic) {
+                    updateSyncStatus('✅ Printer ready! You can now print labels.', 'success');
+                } else {
+                    updateSyncStatus('⚠️ Connected but may not support printing. Try test print.', 'info');
+                }
+                
+                // Handle disconnection
+                device.addEventListener('gattserverdisconnected', onDisconnected);
                 
             } catch (error) {
-                console.error('Bluetooth connection error:', error);
-                alert('Failed to connect to printer: ' + error.message);
+                console.error('Bluetooth error:', error);
+                
+                let msg = '❌ Connection failed!\n\n';
+                
+                if (error.name === 'NotFoundError') {
+                    msg += 'No device selected.\n\nMake sure:\n✅ Printer is ON\n✅ Bluetooth enabled\n✅ Printer in pairing mode';
+                } else if (error.name === 'NetworkError') {
+                    msg += 'Connection failed.\n\nTry:\n• Move closer to printer\n• Turn printer off/on\n• Unpair and try again';
+                } else {
+                    msg += error.message;
+                }
+                
+                alert(msg);
+                updateSyncStatus('❌ Connection failed', 'error');
+            }
+        });
+        
+        // Handle disconnection
+        function onDisconnected() {
+            isPrinterConnected = false;
+            printerDevice = null;
+            printerCharacteristic = null;
+            printerServer = null;
+            printerStatus.textContent = '⚠️ Printer Disconnected';
+            printerStatus.className = 'status-bar status-disconnected';
+            printBtn.disabled = true;
+            testPrintBtn.disabled = true;
+            connectPrinterBtn.textContent = '🔗 Connect Bluetooth Printer';
+            connectPrinterBtn.classList.remove('btn-success');
+            connectPrinterBtn.classList.add('btn-primary');
+            updateSyncStatus('⚠️ Printer disconnected', 'error');
+        }
+        
+        // Test print function
+        testPrintBtn.addEventListener('click', async () => {
+            if (!isPrinterConnected) {
+                alert('Please connect printer first');
+                return;
+            }
+            
+            try {
+                updateSyncStatus('🖨️ Sending test print...', 'syncing');
+                
+                // Simple test text
+                const testText = '\n\n=== TEST PRINT ===\n\nPrinter Connected!\n' + 
+                                new Date().toLocaleString() + '\n\n\n\n';
+                
+                await sendToPrinter(testText);
+                
+                updateSyncStatus('✅ Test print sent!', 'success');
+                alert('✅ Test print sent!\n\nCheck your printer.');
+                
+            } catch (error) {
+                console.error('Test print error:', error);
+                updateSyncStatus('❌ Test print failed', 'error');
+                alert('❌ Test print failed: ' + error.message);
             }
         });
         
         // Print label
-        printBtn.addEventListener('click', () => {
+        printBtn.addEventListener('click', async () => {
             if (!isPrinterConnected) {
                 alert('Please connect to a printer first.');
                 return;
@@ -1008,16 +1151,130 @@
             }
             
             const product = products.find(p => p.id === selectedProduct);
-            if (product) {
-                alert(`Label sent to printer successfully!\n\nProduct: ${product.productName}\nSection: ${product.section}\nUse By: ${previewUseByDate.textContent}`);
+            if (!product) {
+                alert('Product not found.');
+                return;
+            }
+            
+            try {
+                updateSyncStatus('🖨️ Printing label...', 'syncing');
+                
+                const labelContent = createLabelContent(product);
+                await sendToPrinter(labelContent);
+                
+                updateSyncStatus('✅ Label printed successfully!', 'success');
+                alert(`✅ Label sent to printer!\n\nProduct: ${product.productName}\nSection: ${product.section}\nUse By: ${previewUseByDate.textContent}`);
+                
+            } catch (error) {
+                console.error('Print error:', error);
+                updateSyncStatus('❌ Print failed', 'error');
+                
+                const retry = confirm(`❌ Print failed: ${error.message}\n\nShow label as text?`);
+                if (retry) {
+                    const labelContent = createLabelContentText(product);
+                    alert('Copy this:\n\n' + labelContent);
+                }
             }
         });
         
-        // Update preview when paper dimensions change
+        // Send data to printer
+        async function sendToPrinter(content) {
+            if (!printerCharacteristic) {
+                // Try Web Serial API as fallback
+                if ('serial' in navigator) {
+                    throw new Error('Try using Web Serial instead (not implemented yet)');
+                }
+                throw new Error('No printer connection available');
+            }
+            
+            const encoder = new TextEncoder();
+            const data = encoder.encode(content);
+            
+            // Send in chunks
+            const chunkSize = 20;
+            
+            for (let i = 0; i < data.length; i += chunkSize) {
+                const chunk = data.slice(i, Math.min(i + chunkSize, data.length));
+                
+                try {
+                    if (printerCharacteristic.properties.writeWithoutResponse) {
+                        await printerCharacteristic.writeValueWithoutResponse(chunk);
+                    } else {
+                        await printerCharacteristic.writeValue(chunk);
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                } catch (err) {
+                    console.error('Write error:', err);
+                    throw new Error('Failed to send data to printer');
+                }
+            }
+        }
+        
+        // Create ESC/POS label content
+        function createLabelContent(product) {
+            const ESC = '\x1B';
+            const GS = '\x1D';
+            
+            let content = '';
+            
+            // Initialize
+            content += ESC + '@';
+            
+            // Center align
+            content += ESC + 'a' + '\x01';
+            
+            // Large bold text
+            content += ESC + 'E' + '\x01';
+            content += GS + '!' + '\x11';
+            content += product.productName + '\n';
+            
+            // Normal text
+            content += ESC + 'E' + '\x00';
+            content += GS + '!' + '\x00';
+            
+            // Left align
+            content += ESC + 'a' + '\x00';
+            content += '\n';
+            
+            // Details
+            content += 'Section: ' + product.section + '\n';
+            content += 'Made: ' + previewMadeDate.textContent + '\n';
+            
+            // Bold use by
+            content += ESC + 'E' + '\x01';
+            content += 'Use By: ' + previewUseByDate.textContent + '\n';
+            content += ESC + 'E' + '\x00';
+            
+            content += 'Batch: ' + previewBatch.textContent + '\n';
+            
+            // Feed and cut
+            content += '\n\n\n';
+            content += GS + 'V' + '\x41' + '\x03';
+            
+            return content;
+        }
+        
+        // Create plain text label
+        function createLabelContentText(product) {
+            return `
+=========================
+${product.productName}
+=========================
+
+Section: ${product.section}
+Made: ${previewMadeDate.textContent}
+Use By: ${previewUseByDate.textContent}
+Batch: ${previewBatch.textContent}
+
+=========================
+            `.trim();
+        }
+        
+        // Update preview when paper changes
         paperWidthInput.addEventListener('change', updatePreview);
         paperHeightInput.addEventListener('change', updatePreview);
         
-        // Initialize the app
+        // Initialize
         initApp();
     </script>
 </body>
